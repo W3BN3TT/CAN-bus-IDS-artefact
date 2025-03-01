@@ -1,0 +1,68 @@
+Intrusion detection system
+import time  # Import time module for timestamping and time-related calculations
+import can  # Import python-can module to interface with CAN 
+
+# Set up the CAN interface
+bus = can.interface.Bus(interface='socketcan', channel='vcan0', bitrate=500000)  # Initialize CAN interface 
+# Variables for tracking messages
+message_times = []  # List to track timestamps of messages for frequency anomaly detection
+recent_frames = {}  # Dictionary to track frame IDs and their timestamps for repeated frame  detection
+injection_attack_id = 0x123  # Specific frame ID to check for an specific frame ( injection attack )
+injection_attack_data = [1, 2, 3, 4, 5, 6, 7, 8]  # Specific parameters for injection attack indication
+
+def check_frequency_anomaly():
+    """
+    Check for frequency anomalies by analyzing the time between consecutive messages.
+    If the time between messages is <= 0.8 seconds, it is flagged as an anomaly.
+    """
+    current_time = time.time()  # Get the current time
+
+    if len(message_times) >= 2:  # Ensure there are at least two messages to calculate time differences
+        time_diff = current_time - message_times[-1]  # Calculate time difference from the last message
+        if time_diff <= 0.8:  # Check if the time difference is within the anomaly parameters
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frequency Anomaly Detection: Time difference between consecutive messages is {time_diff:.3f} seconds.")
+            print(f"   This type of detection is indicative of potential DoS and Fuzzing attacks.")  # Log potential attack type
+            return True  # Return True if anomaly is detected
+
+    message_times.append(current_time)  # Record the timestamp of the current message
+    # Clean up message timestamps older than 5 seconds (memory management, prevents crashing)
+    message_times[:] = [timestamp for timestamp in message_times if current_time - timestamp <= 5]
+    return False  # Return False if no anomaly is detected
+
+def check_replay_attack(frame):
+    """
+    Detect possible replay attacks by checking if a frame ID is repeated within 0.8 seconds.
+    """
+    global recent_frames  # Access the recent_frames dictionary globally
+
+    current_time = time.time()  # Get the current timestamp
+    frame_id = frame.arbitration_id  # Extract the frame ID from the received CAN frame
+
+    if frame_id in recent_frames:  # Check if the frame ID has been seen recently
+        if current_time - recent_frames[frame_id] <= 0.8:  # Check if it was seen within the last 0.8 seconds
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Repeated Frame Detection: Frame ID={hex(frame_id)} was repeated within 0.8 seconds. This is an indicator of a potential Replay attack")
+            return True  # Return True if replay attack is detected
+
+    recent_frames[frame_id] = current_time  # Update the timestamp for the current frame ID
+    # Remove old frame entries ( memory management )
+    recent_frames = {id: ts for id, ts in recent_frames.items() if current_time - ts <= 5}
+    return False  # Return False if no replay attack is detected
+
+def check_injection_attack(frame):
+    """
+    Detect injected frame by looking for a specific frame ID and data combination.
+    """
+    if frame.arbitration_id == injection_attack_id and list(frame.data) == injection_attack_data:
+        # Log the detection with the frame ID and data
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame Injection Detection: Frame ID={hex(frame.arbitration_id)} with data={list(frame.data)}. This is indicitive of an Injection Attack")
+        return True  # Return True if an injection attack is detected
+    return False  # Return False if no injection attack is detected
+
+def main():
+    """
+    Main loop for monitoring CAN bus traffic and performing IDS scans.
+    """
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] IDS is now running. Monitoring CAN bus traffic...")  # indicates that the IDS is active
+
+    while True:
+        message = bus.recv()  
