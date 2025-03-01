@@ -1,0 +1,196 @@
+
+import time  # Import time module for timestamping and time-related calculations
+import can  # Import python-can module to interface with CAN 
+
+# Set up the CAN interface
+bus = can.interface.Bus(interface='socketcan', channel='vcan0', bitrate=500000)  # Initialize CAN interface 
+# Variables for tracking messages
+message_times = []  # List to track timestamps of messages for frequency anomaly detection
+recent_frames = {}  # Dictionary to track frame IDs and their timestamps for repeated frame  detection
+injection_attack_id = 0x123  # Specific frame ID to check for an specific frame ( injection attack )
+injection_attack_data = [1, 2, 3, 4, 5, 6, 7, 8]  # Specific parameters for injection attack indication
+
+def check_frequency_anomaly():
+    """
+    Check for frequency anomalies by analyzing the time between consecutive messages.
+    If the time between messages is <= 0.8 seconds, it is flagged as an anomaly.
+    """
+    current_time = time.time()  # Get the current time
+
+    if len(message_times) >= 2:  # Ensure there are at least two messages to calculate time differences
+        time_diff = current_time - message_times[-1]  # Calculate time difference from the last message
+        if time_diff <= 0.8:  # Check if the time difference is within the anomaly parameters
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frequency Anomaly Detection: Time difference between consecutive messages is {time_diff:.3f} seconds.")
+            print(f"   This type of detection is indicative of potential DoS and Fuzzing attacks.")  # Log potential attack type
+            return True  # Return True if anomaly is detected
+
+    message_times.append(current_time)  # Record the timestamp of the current message
+    # Clean up message timestamps older than 5 seconds (memory management, prevents crashing)
+    message_times[:] = [timestamp for timestamp in message_times if current_time - timestamp <= 5]
+    return False  # Return False if no anomaly is detected
+
+def check_replay_attack(frame):
+    """
+    Detect possible replay attacks by checking if a frame ID is repeated within 0.8 seconds.
+    """
+    global recent_frames  # Access the recent_frames dictionary globally
+
+    current_time = time.time()  # Get the current timestamp
+    frame_id = frame.arbitration_id  # Extract the frame ID from the received CAN frame
+
+    if frame_id in recent_frames:  # Check if the frame ID has been seen recently
+        if current_time - recent_frames[frame_id] <= 0.8:  # Check if it was seen within the last 0.8 seconds
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Repeated Frame Detection: Frame ID={hex(frame_id)} was repeated within 0.8 seconds. This is an indicator of a potential Replay attack")
+            return True  # Return True if replay attack is detected
+
+    recent_frames[frame_id] = current_time  # Update the timestamp for the current frame ID
+    # Remove old frame entries ( memory management )
+    recent_frames = {id: ts for id, ts in recent_frames.items() if current_time - ts <= 5}
+    return False  # Return False if no replay attack is detected
+
+def check_injection_attack(frame):
+    """
+    Detect injected frame by looking for a specific frame ID and data combination.
+    """
+    if frame.arbitration_id == injection_attack_id and list(frame.data) == injection_attack_data:
+        # Log the detection with the frame ID and data
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Frame Injection Detection: Frame ID={hex(frame.arbitration_id)} with data={list(frame.data)}. This is indicitive of an Injection Attack")
+        return True  # Return True if an injection attack is detected
+    return False  # Return False if no injection attack is detected
+
+def main():
+    """
+    Main loop for monitoring CAN bus traffic and performing IDS scans.
+    """
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] IDS is now running. Monitoring CAN bus traffic...")  # indicates that the IDS is active
+
+    while True:
+        message = bus.recv()  
+
+Sending ecu
+import can  # Import the python-can library for bus communication
+import time  # Import time library for delays
+import random  # Import random library for  random values
+import threading  # Import threading to allow continuous sending and inputs to run paralell 
+import keyboard  # Import keyboard for key input event handling 
+
+# Initialize CAN bus
+try:
+    # Create a bus interface on vcan0
+    bus = can.interface.Bus(interface="socketcan", channel="vcan0", bitrate=500000)
+    print("Sender: CAN bus initialized successfully!")
+except Exception as e:
+    # If initialization fails, print error and exit
+    print(f"Sender: Failed to initialize CAN bus: {e}")
+    exit(1)
+
+# Global variable to store the last sent message (used in the replay attack)
+last_sent_message = None
+
+# Function to send a normal CAN messages
+def send_normal_message():
+    # Generate a random message ID between 0x100 and 0x1FF 
+    message_id = random.randint(0x100, 0x1FF)
+    # Generate random 8-byte data for the CAN message
+    data = [random.randint(0, 255) for _ in range(8)]
+    # Create a CAN message with the generated ID and data 
+    message = can.Message(arbitration_id=message_id, data=data, is_extended_id=False)
+    # Send the message 
+    bus.send(message)
+    # Print message details for visualisation
+    print(f"Sender: Sent message - ID=0x{message.arbitration_id:X}, Data={data}")
+    # Return the last sent message (needed for replay attack)
+    return message
+
+# Function to send multiple CAN frames with random data (fuzzing attack)
+def send_large_random_data():
+    frames_to_send = 10  # Number of CAN frames to send at once
+    print("Sender: Sending multiple CAN frames with random data.")
+    
+    # Loop to send 10 messages with random data
+    for _ in range(frames_to_send):
+        # Generate a random message ID for each frame
+        message_id = random.randint(0x100, 0x1FF)
+        # Generate random 8-byte data for the CAN message
+        data = [random.randint(0, 255) for _ in range(8)]
+        # Create a CAN message with the generated ID and data
+        message = can.Message(arbitration_id=message_id, data=data, is_extended_id=False)
+        # Send the message
+        bus.send(message)
+        # Print message details for verification
+        print(f"Sender: Sent message - ID=0x{message.arbitration_id:X}, Data={data}")
+
+# Function to listen for user input and trigger specified attack
+def listen_for_input():
+    global last_sent_message  # Access the global variable to store the last sent message
+    try:
+        while True:
+            # Check if the 'f' key is pressed (DoS attack simulation)
+            if keyboard.is_pressed('f'):
+                print("Sender: Flooding - Sending 10 messages rapidly.")
+                for _ in range(10):  # Send 10 messages rapidly
+                    send_normal_message()  # Send a normal CAN frame
+                    time.sleep(0.5)  # delay between messages during DOS (0.1 is standard for this)
+
+            # Check if the 'l' key is pressed (Fuzzing attack simulation)
+            elif keyboard.is_pressed('l'):
+                print("Sender: Sending 10 messages instantly with random data.")
+                send_large_random_data()  # Call the function to send attack
+
+            # Check if the 'r' key is pressed (replay attack simulation)
+            elif keyboard.is_pressed('r') and last_sent_message:
+                print("Sender: Resending the last sent message.")
+                bus.send(last_sent_message)  # Resend the last sent message
+                print(f"Sender: Resent message - ID=0x{last_sent_message.arbitration_id:X}, Data={last_sent_message.data}")
+
+            # Check if the 's' key is pressed (injection attack simulation)
+            elif keyboard.is_pressed('s'):
+                print("Sender: Sending a specific frame ID (ID=0x123).")
+                # Define the fixed CAN frame ID and data
+                message_id = 0x123  # Fixed CAN frame ID
+                data = [1, 2, 3, 4, 5, 6, 7, 8]  # Fixed data for the specific frame (this is a generic sequence to ID easier)
+                # Create the CAN message with the specific frame ID and fixed data
+                message = can.Message(arbitration_id=message_id, data=data, is_extended_id=False)
+                # Send 
+                bus.send(message)
+                # Print message details for verification
+                print(f"Sender: Sent specific frame - ID=0x{message.arbitration_id:X}, Data={data}")
+
+            # Check if the 'q' key is pressed (exit program)
+            elif keyboard.is_pressed('q'):
+                print("Sender: Stopping message transmission.")
+                break  # Exit the loop and stop sending messages
+
+            # Small delay to lower the CPU usage in the input listening loop (performance improvement)
+            time.sleep(0.1)
+
+    except KeyboardInterrupt:
+        # Handle manual interruption of the program
+        print("\nSender: Stopping message transmission.")
+    except can.CanError as e:
+        # Handle errors from the CAN bus
+        print(f"Sender: CAN Error - {e}")
+
+# Main sending loop - continuously sends messages 
+def send_continuous_messages():
+    global last_sent_message  # Access the global variable for the last sent message
+    try:
+        while True:
+            last_sent_message = send_normal_message()  # Send a normal message and save the last sent message
+            time.sleep(1)  # 1 second delay between normal messages
+
+    except KeyboardInterrupt:
+        # Handle manual interruption of the message sending loop
+        print("\nSender: Stopping message transmission.")
+
+# Create threads for continuous sending and listening for user input
+send_thread = threading.Thread(target=send_continuous_messages)  # Thread for sending messages
+listen_thread = threading.Thread(target=listen_for_input)  # Thread for listening for user input
+
+# Start both threads
+send_thread.start()
+listen_thread.start()
+
+# Join the threads to the main program
+send_thread.join()
+listen_thread.join()
