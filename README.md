@@ -21,9 +21,10 @@ candump vcan0
 cangen vcan0
 
 If candump doesn't show messages, there's a system-level issue with vcan.
+if messsages are recieved, stop these functions and proceed below
 
 the imports used in the other blocks of code must be installed on your device along with python3 and vcan
-to initiate each section:
+#To initiate each section:
 sudo python3 send14.py
 python3 rec2.py
 python3 ids61.py
