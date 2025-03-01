@@ -1,0 +1,31 @@
+import can  # Import the python-can library to interface with the CAN bus
+import time  # Import the time library to handle time-based operations
+
+# Initialize CAN bus
+try:
+    # Set up the CAN interface 
+    bus = can.interface.Bus(bustype="socketcan", channel="vcan0", bitrate=500000)
+    print("Receiver: CAN bus initialized successfully!")  # Confirmation message
+except Exception as e:
+    # error message and exit
+    print(f"Receiver: Failed to initialize CAN bus: {e}")
+    exit(1)
+
+# Function to listen for and receive CAN messages
+try:
+    while True:  # Infinite loop to continuously listen for messages
+        # Receive a CAN messages
+        message = bus.recv()  # waits for a message from the CAN bus
+        if message:  # If a message was received
+            # Print the received message ID and its data
+            print(f"Receiver: Received message - ID=0x{message.arbitration_id:X}, Data={list(message.data)}")
+        else:
+            # If no message is received (timeout or no activity), print a message
+            print("Receiver: No messages received in the last 5 seconds")
+            time.sleep(5)  # Wait for 5 seconds before checking again
+except KeyboardInterrupt:
+    # stopping the transmission
+    print("\nReceiver: Stopping message reception.")
+except can.CanError as e:
+    # If a CAN-related error occurs, print the error message
+    print(f"Receiver: CAN Error - {e}")
