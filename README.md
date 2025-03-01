@@ -26,6 +26,8 @@ if messsages are recieved, stop these functions and proceed below
 the imports used in the other blocks of code must be installed on your device along with python3 and vcan
 #To initiate each section:
 
+USE IDS WORKING NOT IDS OUT OF THE PACKAGES IN THE MAIN PAGE
+
 sudo python3 send14.py
 
 python3 rec2.py
